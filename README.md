@@ -4,7 +4,7 @@ Mira is a quiet Markdown editor for macOS, inspired by Typora's focused writing 
 
 It is built with SwiftUI and a small AppKit text-editor bridge, keeping native macOS editing behavior while rendering a live Markdown preview.
 
-![截屏2026-05-31 03.03.07](assets/截屏2026-05-31 03.03.07.png)
+![welcome](https://github.com/galen-coder/Mira/blob/main/assets/%E6%88%AA%E5%B1%8F2026-05-31%2003.03.07.png)
 
 ## Features
 

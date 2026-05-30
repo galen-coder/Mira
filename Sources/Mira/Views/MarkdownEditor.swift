@@ -4,16 +4,20 @@ struct MarkdownEditor: View {
     @Binding var text: String
     @Binding var command: MarkdownEditCommand?
 
+    let documentURL: URL?
     let searchText: String
     let isFocusMode: Bool
+    @ObservedObject var scrollSync: ScrollSyncState
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             MarkdownSourceEditor(
                 text: $text,
                 command: $command,
+                documentURL: documentURL,
                 isFocusMode: isFocusMode,
-                searchText: searchText
+                searchText: searchText,
+                scrollSync: scrollSync
             )
 
             if !searchText.isEmpty {

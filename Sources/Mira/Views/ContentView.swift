@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Binding var document: MarkdownDocument
+    let documentURL: URL?
 
     @AppStorage("editorMode") private var storedMode = EditorMode.split.rawValue
     @AppStorage("showsOutline") private var showsOutline = true
@@ -26,6 +27,7 @@ struct ContentView: View {
 
             EditorWorkspace(
                 text: $document.text,
+                documentURL: documentURL,
                 mode: mode,
                 searchText: $searchText,
                 previewFontSize: $previewFontSize,
@@ -81,6 +83,13 @@ struct ContentView: View {
                     Image(systemName: "chevron.left.forwardslash.chevron.right")
                 }
                 .help("Inline code")
+
+                Button {
+                    editCommand = MarkdownEditCommand(kind: .codeBlock)
+                } label: {
+                    Image(systemName: "curlybraces.square")
+                }
+                .help("Code block")
 
                 Button {
                     editCommand = MarkdownEditCommand(kind: .link)

@@ -15,9 +15,15 @@ struct MarkdownBlock: Identifiable, Equatable {
         case blank
     }
 
-    let id = UUID()
+    let id: String
     let line: Int
     let kind: Kind
+
+    init(line: Int, kind: Kind) {
+        self.line = line
+        self.kind = kind
+        id = "\(line)-\(kind.stableKey)"
+    }
 }
 
 struct TaskListItem: Equatable {
@@ -26,8 +32,37 @@ struct TaskListItem: Equatable {
 }
 
 struct OutlineItem: Identifiable, Equatable {
-    let id = UUID()
+    var id: String { "\(line)-\(level)-\(title)" }
     let line: Int
     let level: Int
     let title: String
+}
+
+private extension MarkdownBlock.Kind {
+    var stableKey: String {
+        switch self {
+        case let .heading(level, text):
+            "heading-\(level)-\(text)"
+        case let .paragraph(text):
+            "paragraph-\(text)"
+        case let .quote(text):
+            "quote-\(text)"
+        case let .unorderedList(items):
+            "ul-\(items.joined(separator: "\u{1F}"))"
+        case let .orderedList(items):
+            "ol-\(items.joined(separator: "\u{1F}"))"
+        case let .taskList(items):
+            "tasks-\(items.map { "\($0.isComplete)-\($0.text)" }.joined(separator: "\u{1F}"))"
+        case let .table(headers, rows):
+            "table-\(headers.joined(separator: "\u{1F}"))-\(rows.map { $0.joined(separator: "\u{1E}") }.joined(separator: "\u{1F}"))"
+        case let .image(alt, source):
+            "image-\(alt)-\(source)"
+        case let .code(language, text):
+            "code-\(language ?? "")-\(text)"
+        case .divider:
+            "divider"
+        case .blank:
+            "blank"
+        }
+    }
 }

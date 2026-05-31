@@ -22,10 +22,16 @@ enum ClipboardImageAssetWriter {
     static func markdownImageFromPasteboard(
         _ pasteboard: NSPasteboard,
         documentURL: URL?,
-        createAssetsDirectory: Bool = false
+        createAssetsDirectory: Bool = false,
+        insertAction: ImageInsertAction = .copyToAssets,
+        assetsFolderName: String = "assets"
     ) throws -> String? {
         guard let asset = imageAsset(from: pasteboard) else {
             return nil
+        }
+
+        if insertAction == .linkOriginal, case let .file(sourceURL) = asset {
+            return markdown(for: sourceURL, documentURL: documentURL)
         }
 
         guard let documentURL else {
@@ -33,14 +39,15 @@ enum ClipboardImageAssetWriter {
         }
 
         let documentDirectory = documentURL.deletingLastPathComponent()
-        let assetsDirectory = documentDirectory.appendingPathComponent("assets", isDirectory: true)
+        let folderName = sanitizedFolderName(assetsFolderName)
+        let assetsDirectory = documentDirectory.appendingPathComponent(folderName, isDirectory: true)
         try prepareAssetsDirectory(assetsDirectory, createIfMissing: createAssetsDirectory)
 
         let filename = uniqueFilename(for: asset.preferredFilename, in: assetsDirectory)
         let destination = assetsDirectory.appendingPathComponent(filename)
         try asset.write(to: destination)
 
-        return "![\(filenameWithoutExtension(filename))](assets/\(filename))"
+        return "![\(filenameWithoutExtension(filename))](\(folderName)/\(filename))"
     }
 
     private static func prepareAssetsDirectory(_ directory: URL, createIfMissing: Bool) throws {
@@ -66,6 +73,13 @@ enum ClipboardImageAssetWriter {
             return .file(fileURL)
         }
 
+        for imageType in imageDataTypes {
+            if let data = pasteboard.data(forType: imageType.pasteboardType),
+               NSImage(data: data) != nil {
+                return .data(data, preferredFilename: "image-\(timestamp()).\(imageType.fileExtension)")
+            }
+        }
+
         if let data = pasteboard.data(forType: .png), NSImage(data: data) != nil {
             return .data(data, preferredFilename: "image-\(timestamp()).png")
         }
@@ -83,6 +97,14 @@ enum ClipboardImageAssetWriter {
 
         return nil
     }
+
+    private static let imageDataTypes: [(pasteboardType: NSPasteboard.PasteboardType, fileExtension: String)] = [
+        (NSPasteboard.PasteboardType("public.jpeg"), "jpg"),
+        (NSPasteboard.PasteboardType("public.jpg"), "jpg"),
+        (NSPasteboard.PasteboardType("public.heic"), "heic"),
+        (NSPasteboard.PasteboardType("public.heif"), "heif"),
+        (NSPasteboard.PasteboardType("org.webmproject.webp"), "webp")
+    ]
 
     private static func imageFileURL(from pasteboard: NSPasteboard) -> URL? {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
@@ -126,6 +148,36 @@ enum ClipboardImageAssetWriter {
         let fallback = trimmed.isEmpty ? "image-\(timestamp()).png" : trimmed
         let disallowed = CharacterSet(charactersIn: "/:\\")
         return fallback.components(separatedBy: disallowed).joined(separator: "-")
+    }
+
+    private static func sanitizedFolderName(_ folderName: String) -> String {
+        let trimmed = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = trimmed.isEmpty ? "assets" : trimmed
+        let disallowed = CharacterSet(charactersIn: "/:\\")
+        return fallback.components(separatedBy: disallowed).joined(separator: "-")
+    }
+
+    private static func markdown(for sourceURL: URL, documentURL: URL?) -> String {
+        let path = markdownPath(for: sourceURL, documentURL: documentURL)
+        return "![\(filenameWithoutExtension(sourceURL.lastPathComponent))](\(wrappedIfNeeded(path)))"
+    }
+
+    private static func markdownPath(for sourceURL: URL, documentURL: URL?) -> String {
+        guard let documentURL else {
+            return sourceURL.path
+        }
+
+        let documentDirectory = documentURL.deletingLastPathComponent().standardizedFileURL.path
+        let sourcePath = sourceURL.standardizedFileURL.path
+        guard sourcePath.hasPrefix(documentDirectory + "/") else {
+            return sourcePath
+        }
+
+        return String(sourcePath.dropFirst(documentDirectory.count + 1))
+    }
+
+    private static func wrappedIfNeeded(_ path: String) -> String {
+        path.rangeOfCharacter(from: .whitespacesAndNewlines) == nil ? path : "<\(path)>"
     }
 
     private static func timestamp() -> String {

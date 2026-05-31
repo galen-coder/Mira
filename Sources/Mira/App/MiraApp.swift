@@ -13,6 +13,10 @@ struct MiraApp: App {
         .commands {
             MarkdownCommands()
         }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 
@@ -20,9 +24,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        openStartupDocumentIfNeeded()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    private var startupBehavior: StartupDocumentBehavior {
+        let rawValue = UserDefaults.standard.string(forKey: "startupDocumentBehavior")
+        return StartupDocumentBehavior(rawValue: rawValue ?? "") ?? .temporaryDocument
+    }
+
+    private func openStartupDocumentIfNeeded() {
+        guard startupBehavior == .recentClosedDocument else {
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            RecentDocumentOpener.openRecentClosedDocument(showMissingAlert: false, allowPrivacyPrompt: false)
+        }
     }
 }

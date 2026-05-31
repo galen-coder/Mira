@@ -84,6 +84,18 @@ enum MarkdownParser {
                 continue
             }
 
+            if containsHTMLTag(trimmed) {
+                var htmlLines: [String] = []
+                while index < lines.count {
+                    let candidate = lines[index]
+                    guard !candidate.trimmingCharacters(in: .whitespaces).isEmpty else { break }
+                    htmlLines.append(candidate)
+                    index += 1
+                }
+                blocks.append(MarkdownBlock(line: lineNumber, kind: .html(htmlLines.joined(separator: "\n"))))
+                continue
+            }
+
             if isUnorderedList(trimmed) {
                 var items: [String] = []
                 while index < lines.count {
@@ -121,6 +133,7 @@ enum MarkdownParser {
                     isTaskList(trimmedCandidate) ||
                     imageLine(trimmedCandidate) != nil ||
                     tableBlock(lines: lines, startingAt: index) != nil ||
+                    containsHTMLTag(trimmedCandidate) ||
                     isUnorderedList(trimmedCandidate) ||
                     isOrderedList(trimmedCandidate) ||
                     isDivider(trimmedCandidate) {
@@ -148,7 +161,10 @@ enum MarkdownParser {
             .split { $0.isWhitespace || $0.isNewline }
             .count
         let characters = text.count
-        let headings = outline(from: text).count
+        let headings = text
+            .components(separatedBy: .newlines)
+            .filter { parseHeading($0.trimmingCharacters(in: .whitespaces)) != nil }
+            .count
         let minutes = max(1, Int(ceil(Double(words) / 220.0)))
 
         return DocumentStats(words: words, characters: characters, headings: headings, readingMinutes: minutes)
@@ -246,6 +262,11 @@ enum MarkdownParser {
         orderedListItem(line) != nil
     }
 
+    private static func containsHTMLTag(_ line: String) -> Bool {
+        guard line.contains("<"), line.contains(">") else { return false }
+        return line.range(of: htmlTagPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     private static func orderedListItem(_ line: String) -> String? {
         guard let dot = line.firstIndex(of: ".") else { return nil }
         let number = line[..<dot]
@@ -254,6 +275,8 @@ enum MarkdownParser {
         guard afterDot < line.endIndex, line[afterDot] == " " else { return nil }
         return String(line[line.index(after: afterDot)...])
     }
+
+    private static let htmlTagPattern = #"<!--|<!doctype\s+html|</?(?:a|abbr|acronym|address|applet|article|aside|audio|b|base|basefont|bdi|bdo|big|blockquote|body|br|button|canvas|caption|center|cite|code|col|colgroup|data|datalist|dd|del|details|dfn|dialog|dir|div|dl|dt|em|embed|fieldset|figcaption|figure|font|footer|form|frame|frameset|h[1-6]|head|header|hr|html|i|iframe|img|input|ins|isindex|kbd|label|legend|li|link|main|map|mark|marquee|menu|meta|meter|nav|noframes|noscript|object|ol|optgroup|option|output|p|param|picture|pre|progress|q|rp|rt|ruby|s|samp|script|section|select|small|source|span|strike|strong|style|sub|summary|sup|svg|table|tbody|td|template|textarea|tfoot|th|thead|time|title|tr|track|tt|u|ul|var|video|wbr)(?:\s+[^>]*)?/?>"#
 }
 
 struct DocumentStats: Equatable {

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WebKit
 
 struct MarkdownPreview: View {
     let text: String
@@ -66,6 +67,8 @@ private struct MarkdownBlockView: View {
             MarkdownTable(headers: headers, rows: rows, fontSize: fontSize)
         case let .image(alt, source):
             ImagePreview(alt: alt, source: source, documentURL: documentURL, fontSize: fontSize)
+        case let .html(html):
+            HTMLPreviewBlock(html: html, documentURL: documentURL, fontSize: fontSize)
         case let .code(language, text):
             CodeBlock(language: language, text: text)
         case .divider:
@@ -320,6 +323,119 @@ private struct MarkdownTable: View {
     }
 }
 
+private struct HTMLPreviewBlock: View {
+    let html: String
+    let documentURL: URL?
+    let fontSize: Double
+    @State private var contentHeight: CGFloat = 44
+
+    var body: some View {
+        HTMLBlockView(html: html, documentURL: documentURL, fontSize: fontSize, contentHeight: $contentHeight)
+            .frame(height: contentHeight)
+    }
+}
+
+private struct HTMLBlockView: NSViewRepresentable {
+    let html: String
+    let documentURL: URL?
+    let fontSize: Double
+    @Binding var contentHeight: CGFloat
+
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.navigationDelegate = context.coordinator
+        webView.setValue(false, forKey: "drawsBackground")
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.contentHeight = $contentHeight
+        let renderKey = "\(fontSize)|\(documentURL?.absoluteString ?? "")|\(html)"
+        guard context.coordinator.lastRenderKey != renderKey else { return }
+        context.coordinator.lastRenderKey = renderKey
+        webView.loadHTMLString(wrappedHTML, baseURL: documentURL?.deletingLastPathComponent())
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(contentHeight: $contentHeight)
+    }
+
+    private var wrappedHTML: String {
+        """
+        <!doctype html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            html, body { width: 100%; min-height: 1px; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              font-size: \(fontSize)px;
+              line-height: 1.55;
+              color: CanvasText;
+              background: transparent;
+              margin: 0;
+              overflow: hidden;
+            }
+            h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 0.8em 0 0.35em; }
+            p { margin: 0.45em 0; }
+            a { color: LinkText; }
+            img { max-width: 100%; height: auto; }
+            blockquote { border-left: 3px solid color-mix(in srgb, CanvasText 25%, transparent); margin: 0.6em 0; padding-left: 1em; color: color-mix(in srgb, CanvasText 72%, transparent); }
+            pre { overflow-x: auto; padding: 12px; border-radius: 7px; background: color-mix(in srgb, CanvasText 8%, transparent); }
+            code, kbd, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+            table { border-collapse: collapse; }
+            th, td { border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); padding: 6px 10px; }
+          </style>
+        </head>
+        <body>\(html)</body>
+        </html>
+        """
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var contentHeight: Binding<CGFloat>
+        var lastRenderKey = ""
+
+        init(contentHeight: Binding<CGFloat>) {
+            self.contentHeight = contentHeight
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            measureHeight(in: webView)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.measureHeight(in: webView)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.measureHeight(in: webView)
+            }
+        }
+
+        private func measureHeight(in webView: WKWebView) {
+            webView.evaluateJavaScript("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight)") { [weak self] value, _ in
+                guard let self else { return }
+                let measuredHeight: CGFloat
+
+                if let number = value as? NSNumber {
+                    measuredHeight = CGFloat(truncating: number)
+                } else if let value = value as? CGFloat {
+                    measuredHeight = value
+                } else {
+                    measuredHeight = 44
+                }
+
+                DispatchQueue.main.async {
+                    self.contentHeight.wrappedValue = max(24, measuredHeight.rounded(.up) + 2)
+                }
+            }
+        }
+    }
+}
+
 private struct ImagePreview: View {
     let alt: String
     let source: String
@@ -334,13 +450,7 @@ private struct ImagePreview: View {
                     placeholder(message: "Could not load remote image")
                 })
             case let .local(fileURL):
-                if let image = NSImage(contentsOf: fileURL) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 360)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                } else {
+                LocalImageView(url: fileURL) {
                     placeholder(message: fileURL.path)
                 }
             case let .missing(message):
@@ -420,6 +530,66 @@ private enum MarkdownImageSource {
 
         let baseDirectory = documentURL.deletingLastPathComponent()
         self = .local(URL(fileURLWithPath: expandedPath, relativeTo: baseDirectory).standardizedFileURL)
+    }
+}
+
+private struct LocalImageView<FailurePlaceholder: View>: View {
+    @StateObject private var loader: LocalImageLoader
+    let failurePlaceholder: () -> FailurePlaceholder
+
+    init(url: URL, @ViewBuilder failurePlaceholder: @escaping () -> FailurePlaceholder) {
+        _loader = StateObject(wrappedValue: LocalImageLoader(url: url))
+        self.failurePlaceholder = failurePlaceholder
+    }
+
+    var body: some View {
+        Group {
+            if let image = loader.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 360)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+            } else if loader.didFail {
+                failurePlaceholder()
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            }
+        }
+        .task {
+            await loader.load()
+        }
+    }
+}
+
+@MainActor
+private final class LocalImageLoader: ObservableObject {
+    @Published private(set) var image: NSImage?
+    @Published private(set) var didFail = false
+
+    private static let cache = NSCache<NSURL, NSImage>()
+    private static var failedURLs: Set<URL> = []
+    private let url: URL
+    private var hasLoaded = false
+
+    init(url: URL) {
+        self.url = url
+        image = Self.cache.object(forKey: url as NSURL)
+        didFail = Self.failedURLs.contains(url)
+    }
+
+    func load() async {
+        guard image == nil, !didFail, !hasLoaded else { return }
+        hasLoaded = true
+
+        if let loadedImage = NSImage(contentsOf: url) {
+            Self.cache.setObject(loadedImage, forKey: url as NSURL)
+            image = loadedImage
+        } else {
+            Self.failedURLs.insert(url)
+            didFail = true
+        }
     }
 }
 

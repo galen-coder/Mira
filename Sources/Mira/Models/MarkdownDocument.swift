@@ -2,8 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct MarkdownDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.markdown, .plainText] }
-    static var writableContentTypes: [UTType] { [.markdown, .plainText] }
+    static var readableContentTypes: [UTType] { [.markdown, .plainText, .html] }
+    static var writableContentTypes: [UTType] { [.markdown, .plainText, .html] }
 
     var text: String
 

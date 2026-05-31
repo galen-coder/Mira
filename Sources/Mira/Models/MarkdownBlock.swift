@@ -10,6 +10,7 @@ struct MarkdownBlock: Identifiable, Equatable {
         case taskList([TaskListItem])
         case table(headers: [String], rows: [[String]])
         case image(alt: String, source: String)
+        case html(String)
         case code(language: String?, text: String)
         case divider
         case blank
@@ -57,6 +58,8 @@ private extension MarkdownBlock.Kind {
             "table-\(headers.joined(separator: "\u{1F}"))-\(rows.map { $0.joined(separator: "\u{1E}") }.joined(separator: "\u{1F}"))"
         case let .image(alt, source):
             "image-\(alt)-\(source)"
+        case let .html(text):
+            "html-\(text)"
         case let .code(language, text):
             "code-\(language ?? "")-\(text)"
         case .divider:

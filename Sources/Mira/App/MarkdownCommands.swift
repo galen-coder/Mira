@@ -5,104 +5,116 @@ struct MarkdownCommands: Commands {
     @FocusedBinding(\.showsOutline) private var showsOutline
     @FocusedBinding(\.isFocusMode) private var isFocusMode
     @FocusedBinding(\.markdownEditCommand) private var markdownEditCommand
+    @AppStorage("appLanguage") private var storedLanguage = AppLanguage.system.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: storedLanguage) ?? .system
+    }
 
     var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button(L10n.tr("command.openRecentClosed", language: language)) {
+                RecentDocumentOpener.openRecentClosedDocument()
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+        }
+
         CommandMenu("Markdown") {
-            Picker("View Mode", selection: Binding(
+            Picker(L10n.tr("toolbar.mode", language: language), selection: Binding(
                 get: { editorMode ?? .split },
                 set: { editorMode = $0 }
             )) {
                 ForEach(EditorMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
+                    Text(mode.localizedTitle(language: language)).tag(mode)
                 }
             }
             .pickerStyle(.inline)
 
             Divider()
 
-            Button("Toggle Outline") {
+            Button(L10n.tr("command.toggleOutline", language: language)) {
                 showsOutline?.toggle()
             }
             .keyboardShortcut("0", modifiers: [.command, .option])
 
-            Button("Focus Mode") {
+            Button(L10n.tr("command.focusMode", language: language)) {
                 isFocusMode?.toggle()
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
 
             Divider()
 
-            Button("Bold") {
+            Button(L10n.tr("command.bold", language: language)) {
                 run(.bold)
             }
             .keyboardShortcut("b", modifiers: [.command])
 
-            Button("Italic") {
+            Button(L10n.tr("command.italic", language: language)) {
                 run(.italic)
             }
             .keyboardShortcut("i", modifiers: [.command])
 
-            Button("Inline Code") {
+            Button(L10n.tr("command.inlineCode", language: language)) {
                 run(.inlineCode)
             }
             .keyboardShortcut("e", modifiers: [.command])
 
-            Button("Code Block") {
+            Button(L10n.tr("command.codeBlock", language: language)) {
                 run(.codeBlock)
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
 
             Divider()
 
-            Button("Heading 1") {
+            Button(L10n.tr("command.heading1", language: language)) {
                 run(.heading(1))
             }
             .keyboardShortcut("1", modifiers: [.command])
 
-            Button("Heading 2") {
+            Button(L10n.tr("command.heading2", language: language)) {
                 run(.heading(2))
             }
             .keyboardShortcut("2", modifiers: [.command])
 
-            Button("Heading 3") {
+            Button(L10n.tr("command.heading3", language: language)) {
                 run(.heading(3))
             }
             .keyboardShortcut("3", modifiers: [.command])
 
             Divider()
 
-            Button("Quote") {
+            Button(L10n.tr("command.quote", language: language)) {
                 run(.quote)
             }
             .keyboardShortcut("q", modifiers: [.command, .shift])
 
-            Button("Bullet List") {
+            Button(L10n.tr("command.bulletList", language: language)) {
                 run(.unorderedList)
             }
             .keyboardShortcut("8", modifiers: [.command, .shift])
 
-            Button("Numbered List") {
+            Button(L10n.tr("command.numberedList", language: language)) {
                 run(.orderedList)
             }
             .keyboardShortcut("7", modifiers: [.command, .shift])
 
-            Button("Task List") {
+            Button(L10n.tr("command.taskList", language: language)) {
                 run(.taskList)
             }
             .keyboardShortcut("9", modifiers: [.command, .shift])
 
             Divider()
 
-            Button("Link") {
+            Button(L10n.tr("command.link", language: language)) {
                 run(.link)
             }
             .keyboardShortcut("k", modifiers: [.command])
 
-            Button("Image") {
+            Button(L10n.tr("command.image", language: language)) {
                 run(.image)
             }
 
-            Button("Table") {
+            Button(L10n.tr("command.table", language: language)) {
                 run(.table)
             }
         }

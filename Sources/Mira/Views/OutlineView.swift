@@ -2,6 +2,11 @@ import SwiftUI
 
 struct OutlineView: View {
     let text: String
+    @AppStorage("appLanguage") private var storedLanguage = AppLanguage.system.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: storedLanguage) ?? .system
+    }
 
     private var outline: [OutlineItem] {
         MarkdownParser.outline(from: text)
@@ -17,7 +22,7 @@ struct OutlineView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
                         .lineLimit(1)
-                    Text("Line \(item.line)")
+                    Text("\(L10n.tr("outline.line", language: language)) \(item.line)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -27,9 +32,9 @@ struct OutlineView: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Outline")
+                Text(L10n.tr("outline.title", language: language))
                     .font(.headline)
-                Text("\(outline.count) headings")
+                Text("\(outline.count) \(L10n.tr("outline.headings", language: language))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

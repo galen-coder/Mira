@@ -8,6 +8,11 @@ struct MarkdownEditor: View {
     let searchText: String
     let isFocusMode: Bool
     @ObservedObject var scrollSync: ScrollSyncState
+    @AppStorage("appLanguage") private var storedLanguage = AppLanguage.system.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: storedLanguage) ?? .system
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -21,7 +26,7 @@ struct MarkdownEditor: View {
             )
 
             if !searchText.isEmpty {
-                Text("\(matchCount) matches")
+                Text("\(matchCount) \(L10n.tr("search.matches", language: language))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)

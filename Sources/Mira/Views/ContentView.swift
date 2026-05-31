@@ -8,8 +8,13 @@ struct ContentView: View {
     @AppStorage("showsOutline") private var showsOutline = true
     @AppStorage("isFocusMode") private var isFocusMode = false
     @AppStorage("previewFontSize") private var previewFontSize = 16.0
+    @AppStorage("appLanguage") private var storedLanguage = AppLanguage.system.rawValue
     @SceneStorage("searchText") private var searchText = ""
     @State private var editCommand: MarkdownEditCommand?
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: storedLanguage) ?? .system
+    }
 
     private var mode: Binding<EditorMode> {
         Binding(
@@ -40,16 +45,24 @@ struct ContentView: View {
         .focusedSceneValue(\.showsOutline, $showsOutline)
         .focusedSceneValue(\.isFocusMode, $isFocusMode)
         .focusedSceneValue(\.markdownEditCommand, $editCommand)
+        .background {
+            WindowLifecycleView(
+                documentURL: documentURL,
+                isDocumentEmpty: document.text.isEmpty,
+                documentText: document.text
+            )
+                .frame(width: 0, height: 0)
+        }
         .toolbar {
             ToolbarItemGroup {
                 Toggle(isOn: $showsOutline) {
-                    Label("Outline", systemImage: "sidebar.leading")
+                    Label(L10n.tr("toolbar.outline", language: language), systemImage: "sidebar.leading")
                 }
                 .help("Show outline")
 
-                Picker("Mode", selection: mode) {
+                Picker(L10n.tr("toolbar.mode", language: language), selection: mode) {
                     ForEach(EditorMode.allCases) { mode in
-                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                        Label(mode.localizedTitle(language: language), systemImage: mode.systemImage).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -57,7 +70,7 @@ struct ContentView: View {
                 .help("Switch writing view")
 
                 Toggle(isOn: $isFocusMode) {
-                    Label("Focus", systemImage: "scope")
+                    Label(L10n.tr("toolbar.focus", language: language), systemImage: "scope")
                 }
                 .help("Focus mode")
             }
@@ -101,13 +114,13 @@ struct ContentView: View {
 
             ToolbarItemGroup {
                 Menu {
-                    Button("Heading 1") { editCommand = MarkdownEditCommand(kind: .heading(1)) }
-                    Button("Heading 2") { editCommand = MarkdownEditCommand(kind: .heading(2)) }
-                    Button("Heading 3") { editCommand = MarkdownEditCommand(kind: .heading(3)) }
+                    Button(L10n.tr("command.heading1", language: language)) { editCommand = MarkdownEditCommand(kind: .heading(1)) }
+                    Button(L10n.tr("command.heading2", language: language)) { editCommand = MarkdownEditCommand(kind: .heading(2)) }
+                    Button(L10n.tr("command.heading3", language: language)) { editCommand = MarkdownEditCommand(kind: .heading(3)) }
                 } label: {
                     Image(systemName: "textformat.size")
                 }
-                .help("Heading")
+                .help(L10n.tr("toolbar.heading", language: language))
 
                 Button {
                     editCommand = MarkdownEditCommand(kind: .quote)

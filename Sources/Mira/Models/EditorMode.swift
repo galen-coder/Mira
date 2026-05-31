@@ -28,4 +28,15 @@ enum EditorMode: String, CaseIterable, Identifiable {
             "doc.richtext"
         }
     }
+
+    func localizedTitle(language: AppLanguage) -> String {
+        switch self {
+        case .edit:
+            L10n.tr("mode.edit", language: language)
+        case .split:
+            L10n.tr("mode.split", language: language)
+        case .preview:
+            L10n.tr("mode.preview", language: language)
+        }
+    }
 }

@@ -9,6 +9,9 @@ struct MarkdownSourceEditor: NSViewRepresentable {
     let isFocusMode: Bool
     let searchText: String
     @ObservedObject var scrollSync: ScrollSyncState
+    @AppStorage("imageInsertAction") private var storedImageInsertAction = ImageInsertAction.copyToAssets.rawValue
+    @AppStorage("assetsFolderName") private var assetsFolderName = "assets"
+    @AppStorage("assetsFolderBehavior") private var storedAssetsFolderBehavior = AssetsFolderBehavior.ask.rawValue
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, command: $command, scrollSync: scrollSync)
@@ -25,7 +28,7 @@ struct MarkdownSourceEditor: NSViewRepresentable {
         let textView = MarkdownTextView()
         textView.delegate = context.coordinator
         textView.onPasteImage = { textView in
-            context.coordinator.pasteImage(from: .general, into: textView, documentURL: documentURL)
+            context.coordinator.pasteImage(from: .general, into: textView, configuration: imagePasteConfiguration)
         }
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -56,7 +59,7 @@ struct MarkdownSourceEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? MarkdownTextView else { return }
         textView.onPasteImage = { textView in
-            context.coordinator.pasteImage(from: .general, into: textView, documentURL: documentURL)
+            context.coordinator.pasteImage(from: .general, into: textView, configuration: imagePasteConfiguration)
         }
 
         textView.textContainerInset = NSSize(width: isFocusMode ? 72 : 28, height: 28)
@@ -77,8 +80,17 @@ struct MarkdownSourceEditor: NSViewRepresentable {
             }
         }
 
-        context.coordinator.applyHighlighting(to: textView, searchText: searchText)
+        context.coordinator.scheduleHighlighting(to: textView, searchText: searchText)
         context.coordinator.applySyncedScrollIfNeeded(to: scrollView)
+    }
+
+    private var imagePasteConfiguration: ImagePasteConfiguration {
+        ImagePasteConfiguration(
+            documentURL: documentURL,
+            insertAction: ImageInsertAction(rawValue: storedImageInsertAction) ?? .copyToAssets,
+            assetsFolderName: assetsFolderName,
+            assetsFolderBehavior: AssetsFolderBehavior(rawValue: storedAssetsFolderBehavior) ?? .ask
+        )
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -90,6 +102,9 @@ struct MarkdownSourceEditor: NSViewRepresentable {
         private var isHighlighting = false
         private var isApplyingSyncedScroll = false
         private var lastAppliedScrollRevision = -1
+        private var lastHighlightedText = ""
+        private var lastHighlightedSearchText = ""
+        private var pendingHighlightWorkItem: DispatchWorkItem?
 
         init(text: Binding<String>, command: Binding<MarkdownEditCommand?>, scrollSync: ScrollSyncState) {
             _text = text
@@ -170,16 +185,16 @@ struct MarkdownSourceEditor: NSViewRepresentable {
             return false
         }
 
-        func pasteImage(from pasteboard: NSPasteboard, into textView: NSTextView, documentURL: URL?) -> Bool {
+        fileprivate func pasteImage(from pasteboard: NSPasteboard, into textView: NSTextView, configuration: ImagePasteConfiguration) -> Bool {
             do {
-                guard let markdown = try ClipboardImageAssetWriter.markdownImageFromPasteboard(pasteboard, documentURL: documentURL) else {
+                guard let markdown = try markdownImage(from: pasteboard, configuration: configuration) else {
                     return false
                 }
 
                 insertImageMarkdown(markdown, into: textView)
                 return true
             } catch let error as ClipboardImageAssetWriter.WriteError {
-                return handleImagePasteWriteError(error, pasteboard: pasteboard, textView: textView, documentURL: documentURL)
+                return handleImagePasteWriteError(error, pasteboard: pasteboard, textView: textView, configuration: configuration)
             } catch {
                 presentPasteImageError(error)
                 return true
@@ -190,7 +205,7 @@ struct MarkdownSourceEditor: NSViewRepresentable {
             _ error: ClipboardImageAssetWriter.WriteError,
             pasteboard: NSPasteboard,
             textView: NSTextView,
-            documentURL: URL?
+            configuration: ImagePasteConfiguration
         ) -> Bool {
             switch error {
             case let .assetsDirectoryMissing(url):
@@ -199,11 +214,7 @@ struct MarkdownSourceEditor: NSViewRepresentable {
                 }
 
                 do {
-                    guard let markdown = try ClipboardImageAssetWriter.markdownImageFromPasteboard(
-                        pasteboard,
-                        documentURL: documentURL,
-                        createAssetsDirectory: true
-                    ) else {
+                    guard let markdown = try markdownImage(from: pasteboard, configuration: configuration, createAssetsDirectory: true) else {
                         return false
                     }
 
@@ -213,10 +224,58 @@ struct MarkdownSourceEditor: NSViewRepresentable {
                 }
 
                 return true
-            case .documentHasNoFileURL, .assetsPathIsNotDirectory:
+            case .documentHasNoFileURL:
+                guard let documentURL = promptForMarkdownSaveURL() else {
+                    return true
+                }
+
+                do {
+                    let savedConfiguration = ImagePasteConfiguration(
+                        documentURL: documentURL,
+                        insertAction: configuration.insertAction,
+                        assetsFolderName: configuration.assetsFolderName,
+                        assetsFolderBehavior: configuration.assetsFolderBehavior
+                    )
+                    guard let markdown = try markdownImage(
+                        from: pasteboard,
+                        configuration: savedConfiguration,
+                        createAssetsDirectory: savedConfiguration.assetsFolderBehavior == .createAutomatically
+                    ) else {
+                        return false
+                    }
+
+                    insertImageMarkdown(markdown, into: textView)
+                    try textView.string.write(to: documentURL, atomically: true, encoding: .utf8)
+                } catch let error as ClipboardImageAssetWriter.WriteError {
+                    return handleImagePasteWriteError(error, pasteboard: pasteboard, textView: textView, configuration: ImagePasteConfiguration(
+                        documentURL: documentURL,
+                        insertAction: configuration.insertAction,
+                        assetsFolderName: configuration.assetsFolderName,
+                        assetsFolderBehavior: configuration.assetsFolderBehavior
+                    ))
+                } catch {
+                    presentPasteImageError(error)
+                }
+
+                return true
+            case .assetsPathIsNotDirectory:
                 presentPasteImageError(error)
                 return true
             }
+        }
+
+        private func markdownImage(
+            from pasteboard: NSPasteboard,
+            configuration: ImagePasteConfiguration,
+            createAssetsDirectory: Bool? = nil
+        ) throws -> String? {
+            try ClipboardImageAssetWriter.markdownImageFromPasteboard(
+                pasteboard,
+                documentURL: configuration.documentURL,
+                createAssetsDirectory: createAssetsDirectory ?? (configuration.assetsFolderBehavior == .createAutomatically),
+                insertAction: configuration.insertAction,
+                assetsFolderName: configuration.assetsFolderName
+            )
         }
 
         private func insertImageMarkdown(_ markdown: String, into textView: NSTextView) {
@@ -276,9 +335,31 @@ struct MarkdownSourceEditor: NSViewRepresentable {
             }
         }
 
+        func scheduleHighlighting(to textView: NSTextView, searchText: String) {
+            let currentText = textView.string
+            guard currentText != lastHighlightedText || searchText != lastHighlightedSearchText else {
+                return
+            }
+
+            pendingHighlightWorkItem?.cancel()
+
+            if searchText != lastHighlightedSearchText {
+                applyHighlighting(to: textView, searchText: searchText)
+                return
+            }
+
+            let workItem = DispatchWorkItem { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                self.applyHighlighting(to: textView, searchText: searchText)
+            }
+            pendingHighlightWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+        }
+
         func applyHighlighting(to textView: NSTextView, searchText: String) {
             guard let storage = textView.textStorage else { return }
 
+            pendingHighlightWorkItem?.cancel()
             isHighlighting = true
             let selectedRange = textView.selectedRange()
             let fullRange = NSRange(location: 0, length: storage.length)
@@ -293,6 +374,8 @@ struct MarkdownSourceEditor: NSViewRepresentable {
             textView.typingAttributes = baseTypingAttributes
             textView.setSelectedRange(validRange(selectedRange, in: fullRange) ? selectedRange : NSRange(location: storage.length, length: 0))
             restoreVisibleOrigin(visibleOrigin, in: textView)
+            lastHighlightedText = textView.string
+            lastHighlightedSearchText = searchText
             isHighlighting = false
         }
 
@@ -466,6 +549,13 @@ struct MarkdownSourceEditor: NSViewRepresentable {
     }
 }
 
+private struct ImagePasteConfiguration {
+    let documentURL: URL?
+    let insertAction: ImageInsertAction
+    let assetsFolderName: String
+    let assetsFolderBehavior: AssetsFolderBehavior
+}
+
 private final class MarkdownTextView: NSTextView {
     var onPasteImage: ((NSTextView) -> Bool)?
 
@@ -495,4 +585,14 @@ private func confirmCreateAssetsDirectory(_ url: URL) -> Bool {
     alert.addButton(withTitle: "Create")
     alert.addButton(withTitle: "Cancel")
     return alert.runModal() == .alertFirstButtonReturn
+}
+
+private func promptForMarkdownSaveURL() -> URL? {
+    let panel = NSSavePanel()
+    panel.title = "Save document before pasting images"
+    panel.message = "Mira needs a document folder before it can save pasted images into assets."
+    panel.nameFieldStringValue = "Untitled.md"
+    panel.allowedContentTypes = [.markdown]
+    panel.canCreateDirectories = true
+    return panel.runModal() == .OK ? panel.url : nil
 }

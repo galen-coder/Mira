@@ -57,6 +57,7 @@ cat >"$INFO_PLIST" <<PLIST
       <array>
         <string>net.daringfireball.markdown</string>
         <string>public.plain-text</string>
+        <string>public.html</string>
       </array>
     </dict>
   </array>

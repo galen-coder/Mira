@@ -9,14 +9,18 @@ It is built with SwiftUI and a small AppKit text-editor bridge, keeping native m
 ## Features
 
 - Starts with an untitled empty Markdown document
+- Opens the first document window at the largest visible desktop size by default
+- Closes the untouched temporary document when opening an existing file
 - Source, split, and preview modes
 - Synchronized scrolling between editor and preview in split mode
 - Markdown outline sidebar
 - Focus mode for distraction-light writing
+- Runtime language setting for English, Simplified Chinese, or system language
+- Settings for pasted/local image insertion behavior
 - Native `NSTextView` editing with undo and find support
 - Toolbar and menu commands for headings, emphasis, links, lists, tables, and code blocks
 - Automatic Markdown code fence completion when typing triple backticks
-- Preview rendering for headings, paragraphs, quotes, lists, task lists, tables, code blocks, local images, and remote images
+- Preview rendering for headings, paragraphs, quotes, lists, task lists, tables, code blocks, HTML blocks, local images, and remote images
 - Remote image caching to avoid reloading images on every edit
 - Clipboard image paste support
 - Word, character, heading, and reading-time stats
@@ -39,6 +43,7 @@ When pasting an image into the editor:
 - Image files copied from Finder are copied into `assets/` using their original bytes and extension.
 - Pasted image files are saved beside the current Markdown file in an `assets/` folder.
 - If `assets/` does not exist, Mira asks before creating it.
+- The image insertion behavior can be changed in Settings.
 
 ## Requirements
 
